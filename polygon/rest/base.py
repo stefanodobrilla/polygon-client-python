@@ -121,6 +121,7 @@ class BaseClient:
             self.BASE + path,
             fields=params,
             headers=headers,
+            timeout=self.timeout,
         )
 
         if self.trace:

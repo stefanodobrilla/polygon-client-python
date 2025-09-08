@@ -10,7 +10,7 @@ from importlib.metadata import version, PackageNotFoundError
 from .models.request import RequestOptionBuilder
 from ..logging import get_logger
 import logging
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode
 from ..exceptions import AuthError, BadResponse
 
 logger = get_logger("RESTClient")

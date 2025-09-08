@@ -4,13 +4,13 @@ import urllib3
 import inspect
 from urllib3.util.retry import Retry
 from enum import Enum
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, Callable
 from datetime import datetime
 from importlib.metadata import version, PackageNotFoundError
 from .models.request import RequestOptionBuilder
 from ..logging import get_logger
 import logging
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode
 from ..exceptions import AuthError, BadResponse
 
 logger = get_logger("RESTClient")
@@ -88,6 +88,8 @@ class BaseClient:
         else:
             self.json = json
 
+        self.before_request: Optional[Callable[[str, Dict[str, Any]], None]] = None
+
     def _decode(self, resp):
         return self.json.loads(resp.data.decode("utf-8"))
 
@@ -115,6 +117,12 @@ class BaseClient:
                 )
             print(f"Request URL: {full_url}")
             print(f"Request Headers: {print_headers}")
+
+        if getattr(self, "before_request", None):
+            try:
+                self.before_request(path, params or {})
+            except Exception as e:
+                logger.warning(f"before_request hook failed: {e}")
 
         resp = self.client.request(
             "GET",

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import certifi
 import json
 import urllib3
@@ -11,7 +13,7 @@ from .models.request import RequestOptionBuilder
 from ..logging import get_logger
 import logging
 from urllib.parse import urlencode
-from ..exceptions import AuthError, BadResponse
+from ..exceptions import AuthError, BadResponse, RequestCancelled
 
 logger = get_logger("RESTClient")
 version_number = "unknown"
@@ -88,7 +90,24 @@ class BaseClient:
         else:
             self.json = json
 
-        self.before_request: Optional[Callable[[str, Dict[str, Any]], None]] = None
+        self.before_request = None
+        self._cancel_request_predicate = None
+
+    def set_cancel_request_predicate(
+        self, predicate: Optional[Callable[[], bool]]
+    ) -> None:
+        """Set a predicate that returns True when an in-flight request should cancel."""
+
+        self._cancel_request_predicate = predicate
+
+    def _should_cancel_request(self) -> bool:
+        if self._cancel_request_predicate is None:
+            return False
+        try:
+            return bool(self._cancel_request_predicate())
+        except Exception as exc:
+            logger.debug("cancel request predicate failed: %s", exc)
+            return False
 
     def _decode(self, resp):
         return self.json.loads(resp.data.decode("utf-8"))
@@ -118,11 +137,17 @@ class BaseClient:
             print(f"Request URL: {full_url}")
             print(f"Request Headers: {print_headers}")
 
+        if self._should_cancel_request():
+            raise RequestCancelled()
+
         if getattr(self, "before_request", None):
             try:
                 self.before_request(path, params or {})
             except Exception as e:
                 logger.warning(f"before_request hook failed: {e}")
+
+        if self._should_cancel_request():
+            raise RequestCancelled()
 
         resp = self.client.request(
             "GET",
@@ -222,6 +247,9 @@ class BaseClient:
         yielded_count = 0
 
         while True:
+            if self._should_cancel_request():
+                raise RequestCancelled()
+
             resp = self._get(
                 path=path,
                 params=params,
@@ -240,6 +268,8 @@ class BaseClient:
             if result_key not in decoded:
                 return []
             for t in decoded[result_key]:
+                if self._should_cancel_request():
+                    raise RequestCancelled()
                 if limit is not None and yielded_count >= limit:
                     return
                 yield deserializer(t)

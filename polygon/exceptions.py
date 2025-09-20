@@ -12,3 +12,9 @@ class BadResponse(Exception):
     """
 
     pass
+
+
+class RequestCancelled(Exception):
+    """Raised when a request is cancelled by the client."""
+
+    pass
